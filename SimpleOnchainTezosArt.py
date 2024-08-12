@@ -5,6 +5,10 @@
 # Warpcast: @jestemzero
 # Discord: @jestemzero
 
+# IMPORTANT: On-chain artwork is saved with a datarUri format in the "artifactUri" metadata attribute
+# Objkt.com currently does not recognize artifactUri strings longer than 254 characters
+# Any token exceeding this limitation needs to contact Objkt.com directly and request the limitation be removed for their collection
+
 import smartpy as sp
 
 # Define the type for balance_of arguments
