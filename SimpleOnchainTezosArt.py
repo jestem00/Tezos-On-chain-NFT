@@ -1,3 +1,10 @@
+# This smart contract has been writen to provide a simple way to mint on-chain artwork with the Tezos blockchain
+# It is written in the Legacy SmartPy programming language speicifally for use with the legacy.smartpy.io/ide compiler
+# Author: jestemzero with assistance from ChatGPT, Gemini and Claude LLMs
+# xTwiiter: @jestemzero
+# Warpcast: @jestemzero
+# Discord: @jestemzero
+
 import smartpy as sp
 
 # Define the type for balance_of arguments
