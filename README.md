@@ -1,9 +1,9 @@
 This smart contract has been writen to provide a simple way to mint on-chain artwork with the Tezos blockchain
 It is written in the Legacy SmartPy programming language speicifally for use with the legacy.smartpy.io/ide compiler
+
 Author: jestemzero with assistance from ChatGPT, Gemini and Claude LLMs
-xTwiiter: @jestemzero
-Warpcast: @jestemzero
-Discord: @jestemzero
+
+xTwiiter / Warpcast / Discord: @jestemzero
 
 IMPORTANT: On-chain artwork is saved with a datarUri format in the "artifactUri" metadata attribute
 Objkt.com currently does not recognize artifactUri strings longer than 254 characters
