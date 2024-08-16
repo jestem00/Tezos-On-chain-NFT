@@ -1,6 +1,6 @@
 Zero Contract
 
-Zero reliance on off-chanin storage for our Tezos Art - Also a plan on my name.
+Zero reliance on off-chanin storage for our Tezos Art - Also a play on my name.
 
 This smart contract has been writen to provide a simple way to mint on-chain artwork with the Tezos blockchain.
 It is written in the Legacy SmartPy programming language speicifally for use with the legacy.smartpy.io/ide compiler.
