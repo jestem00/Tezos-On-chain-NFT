@@ -13,5 +13,7 @@ IMPORTANT: On-chain artwork is saved with a datarUri format in the "artifactUri"
 Objkt.com currently does not recognize artifactUri strings longer than 254 characters.
 Any token exceeding this limitation needs to contact Objkt.com directly and request the limitation be removed for their collection.
 
+Current contract includes proposed Parent/Child relationship. These do not affect performance but can be deleted if desired.
+
 Attribution appreciated but not required. Either way, if you end up using this contract I would love to hear about it.
 I look forward to seeing the growth of Tezos on-chain art.
