@@ -1,4 +1,3 @@
-# Name: Zero Contract (Art with Zero reliance on off-chain storage)
 # This smart contract has been writen to provide a simple way to mint on-chain artwork with the Tezos blockchain
 # It is written in the Legacy SmartPy programming language speicifally for use with the legacy.smartpy.io/ide compiler
 # Author: jestemzero with assistance from ChatGPT, Gemini and Claude LLMs
@@ -66,12 +65,44 @@ class Fa2NftMint(sp.Contract):
                     token_info=sp.TMap(sp.TString, sp.TBytes),
                 ),
             ),
+            # New storage for the CHILD control
+            # This currently a custom addition and not part of Tezos Standard, but does not break contracts
+            # Can be removed if desired but must also remove the associated entrypoints, offchain views, and test scenario
+            children = sp.set(t=sp.TAddress),
+            parents = sp.set(t=sp.TAddress)
         )
 
     def only_owner(self, token_id):
         sp.verify(sp.sender == self.data.ledger[token_id], "You are not the Owner of this Token")
  
 
+    # NEW ENTRYPOINTS FOR PARENT / CHILD FUNCTIONS
+    # Remove these if not using #
+    @sp.entrypoint
+    def add_child(self, address):
+        sp.set_type(address, sp.TAddress)
+        sp.verify(sp.sender == self.data.admin, "Only the contract owner can add children")
+        self.data.children.add(address)
+    
+    @sp.entrypoint
+    def remove_child(self, address):
+        sp.set_type(address, sp.TAddress)
+        sp.verify(sp.sender == self.data.admin, "Only the contract owner can remove children")
+        self.data.children.remove(address)
+    
+    @sp.entrypoint
+    def add_parent(self, address):
+        sp.set_type(address, sp.TAddress)
+        sp.verify(sp.sender == self.data.admin, "Only the contract owner can add parents")
+        self.data.parents.add(address)
+    
+    @sp.entrypoint
+    def remove_parent(self, address):
+        sp.set_type(address, sp.TAddress)
+        sp.verify(sp.sender == self.data.admin, "Only the contract owner can remove parents")
+        self.data.parents.remove(address)
+    # END OF NEW ENTRYPOINTS
+    
     @sp.entrypoint
     def transfer(self, batch):
         with sp.for_("transfer", batch) as transfer:
@@ -183,7 +214,18 @@ class Fa2NftMint(sp.Contract):
     @sp.offchain_view(pure=True)
     def is_operator(self, params):
         sp.result(self.data.operators.contains(params))
-   
+
+    # ADDITIOANL VIEWS FOR PARENT/CHILD
+    # Remove these if not using #
+    @sp.offchain_view(pure=True)
+    def get_children(self):
+        sp.result(self.data.children)
+    
+    @sp.offchain_view(pure=True)
+    def get_parents(self):
+        sp.result(self.data.parents)
+    # END OF ADDITIONAL VIEWS
+    
 # Function to create metadata for test scenario
 def make_metadata(token_data):
     core_metadata = {
@@ -269,3 +311,21 @@ if "templates" not in __name__:
         # Try to burn a token you don't own (should fail)
         scenario += c1.mint(sp.record(to_=ADMIN_ADDRESS, metadata=tok0_md)).run(sender=ADMIN_ADDRESS)
         scenario += c1.burn(sp.record(token_id=sp.nat(1))).run(sender=alice.address, valid=False, exception="You are not the Owner and cannot Burn this Token")
+
+    # ADDED TEST SCENARIO FOR PARENT/CHILD #
+    # Remove this if not using #
+    @sp.add_test(name="Test Address Lists")
+    def test_lists():
+        scenario = sp.test_scenario()
+        c1 = Fa2NftMint(metadata_base=contract_metadata, ADMIN_ADDRESS=ADMIN_ADDRESS)
+        scenario += c1
+        
+        # Test adding addresses
+        test_address = sp.address("tz1...")
+        scenario += c1.add_child(test_address).run(sender=ADMIN_ADDRESS)
+        scenario.verify(c1.data.children.contains(test_address))
+        
+        # Test removing addresses
+        scenario += c1.remove_child(test_address).run(sender=ADMIN_ADDRESS)
+        scenario.verify(~c1.data.children.contains(test_address))
+    # END OF ADDED TEST SCENARIO
