@@ -5,9 +5,8 @@ Zero reliance on off-chanin storage for our Tezos Art - Also a play on my name.
 This smart contract has been writen to provide a simple way to mint on-chain artwork with the Tezos blockchain.
 It is written in the Legacy SmartPy programming language speicifally for use with the legacy.smartpy.io/ide compiler.
 
-There are two versions:
-
 v1 - This is simplified as much as possible. It is the original contract and is only suitable for 1/1
+
 v2 - This is a larger contract with a mix of v1 and the SmartPy FA2 template to ensure editions work properly
 
 Author: jestemzero with assistance from ChatGPT, Gemini and Claude LLMs
