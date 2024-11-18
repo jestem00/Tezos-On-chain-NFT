@@ -37,13 +37,12 @@ class Error_message:
     def operators_unsupported(self): return "FA2_OPERATORS_UNSUPPORTED"
     def not_admin(self):             return "FA2_NOT_ADMIN"
     def not_admin_or_operator(self): return "FA2_NOT_ADMIN_OR_OPERATOR"
-    def paused(self):                return "FA2_PAUSED"
 
 class Batch_transfer:
     def get_transfer_type(self):
         tx_type = sp.TRecord(
             to_ = sp.TAddress,
-            token_id = sp.TNAT,
+            token_id = sp.TNat,
             amount = sp.TNat
         ).layout(("to_", ("token_id", "amount")))
         
@@ -66,7 +65,7 @@ class Operator_param:
         return sp.TRecord(
             owner = sp.TAddress,
             operator = sp.TAddress,
-            token_id = sp.TNAT
+            token_id = sp.TNat
         ).layout(("owner", ("operator", "token_id")))
 
     def make(self, owner, operator, token_id):
@@ -80,7 +79,7 @@ class Operator_param:
 class Ledger_key:
     def make(self, user, token):
         user = sp.set_type_expr(user, sp.TAddress)
-        token = sp.set_type_expr(token, sp.TNAT)
+        token = sp.set_type_expr(token, sp.TNat)
         result = sp.pair(user, token)
         return result
 
@@ -96,7 +95,7 @@ class Operator_set:
         return sp.TRecord(
             owner = sp.TAddress,
             operator = sp.TAddress,
-            token_id = sp.TNAT
+            token_id = sp.TNat
         ).layout(("owner", ("operator", "token_id")))
 
     def key_type(self):
@@ -126,7 +125,7 @@ class Balance_of:
     def request_type():
         return sp.TRecord(
             owner = sp.TAddress,
-            token_id = sp.TNAT
+            token_id = sp.TNat
         ).layout(("owner", "token_id"))
 
     def response_type():
@@ -184,7 +183,6 @@ class FA2_core(sp.Contract):
             all_tokens = sp.nat(0),
             next_token_id=sp.nat(0),
             metadata = metadata,
-            paused = False,
             total_supply = sp.big_map(tkey = sp.TNat, tvalue = sp.TNat),
             children = sp.set(t=sp.TAddress),
             parents = sp.set(t=sp.TAddress)
@@ -192,7 +190,6 @@ class FA2_core(sp.Contract):
 
     @sp.entrypoint
     def transfer(self, params):
-        sp.verify(~self.data.paused, message = self.error_message.paused())
         sp.set_type(params, Batch_transfer().get_type())
         
         sp.for transfer in params:
@@ -257,7 +254,6 @@ class FA2_core(sp.Contract):
 
     @sp.entrypoint
     def balance_of(self, params):
-        sp.verify(~self.data.paused, message = self.error_message.paused())
         sp.set_type(params, Balance_of.entrypoint_type())
         
         def process_request(req):
@@ -351,11 +347,6 @@ class FA2_core(sp.Contract):
         sp.verify(sp.sender == self.data.admin, "Only the contract owner can remove parents")
         self.data.parents.remove(address)
         
-    @sp.entrypoint
-    def set_pause(self, params):
-        sp.verify(sp.sender == self.data.admin, message = self.error_message.not_admin())
-        self.data.paused = params
-
     @sp.offchain_view(pure = True)
     def get_balance(self, req):
         sp.set_type(req, sp.TRecord(
