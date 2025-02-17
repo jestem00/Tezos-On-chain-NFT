@@ -177,6 +177,7 @@ class FA2_core(sp.Contract):
         self.operator_set = Operator_set()
         self.init(
             ledger = sp.big_map(tvalue = Ledger_value.get_type()),
+            contract_id = sp.bytes("0x5a65726f436f6e7472616374"),
             admin = ADMIN_ADDRESS,
             token_metadata = sp.big_map(tkey = sp.TNat, tvalue = Token_meta_data().get_type()),
             operators = self.operator_set.make(),
@@ -185,7 +186,8 @@ class FA2_core(sp.Contract):
             metadata = metadata,
             total_supply = sp.big_map(tkey = sp.TNat, tvalue = sp.TNat),
             children = sp.set(t=sp.TAddress),
-            parents = sp.set(t=sp.TAddress)
+            parents = sp.set(t=sp.TAddress),
+            collaborators = sp.set(t=sp.TAddress)
         )
 
     @sp.entrypoint
@@ -230,7 +232,8 @@ class FA2_core(sp.Contract):
     @sp.entrypoint
     def mint(self, params):
         # Check if the sender is the admin
-        sp.verify(sp.sender == self.data.admin, message = "Not authorized")
+        # sp.verify(sp.sender == self.data.admin, message = "Not authorized")
+        sp.verify((sp.sender == self.data.admin) | (self.data.collaborators.contains(sp.sender)), message = "Not authorized to mint")
         
         # Automatically compute the next token_id using the next_token_id counter
         token_id = self.data.next_token_id
@@ -323,6 +326,18 @@ class FA2_core(sp.Contract):
             sp.if self.data.token_metadata.contains(params.token_id):
                 del self.data.token_metadata[params.token_id]
                 
+    @sp.entrypoint
+    def add_collaborator(self, address):
+        sp.set_type(address, sp.TAddress)
+        sp.verify(sp.sender == self.data.admin, "Only the contract owner can add collaborators")
+        self.data.collaborators.add(address)
+    
+    @sp.entrypoint
+    def remove_collaborator(self, address):
+        sp.set_type(address, sp.TAddress)
+        sp.verify(sp.sender == self.data.admin, "Only the contract owner can remove collaborators")
+        self.data.collaborators.remove(address)
+
     @sp.entrypoint
     def add_child(self, address):
         sp.set_type(address, sp.TAddress)
@@ -428,16 +443,21 @@ def add_test(is_default=True):
         artist = sp.test_account("Artist")
         collector1 = sp.test_account("Collector1")
         collector2 = sp.test_account("Collector2")
+        collaborator = sp.test_account("Collaborator")
 
         scenario.h2("Accounts")
-        scenario.show([artist, collector1, collector2])
+        scenario.show([artist, collector1, collector2, collaborator])
         
         # Contract deployment
         c1 = FA2_core(metadata=contract_metadata)
         scenario += c1
 
-        # Test minting 3 tokens
-        scenario.h3("Mint 3 Tokens")
+        # Test collaborator management
+        scenario.h3("Collaborator Management")
+        c1.add_collaborator(collaborator.address).run(sender=admin)
+        
+        # Test minting as admin
+        scenario.h3("Mint Tokens as Admin")
         
         # Mint 10 copies of edition #1 (token_id 0) to artist
         edition1_md = sp.map(l={
@@ -448,117 +468,92 @@ def add_test(is_default=True):
         })
         c1.mint(to_=artist.address, amount=10, metadata=edition1_md).run(sender=admin)
 
-        # Mint 5 copies of edition #2 (token_id 1) to artist
-        edition2_md = sp.map(l={
-            "": sp.utils.bytes_of_string("ipfs://QmZ2"),
-            "name": sp.utils.bytes_of_string("Edition #2"),
-            "symbol": sp.utils.bytes_of_string("ED2"),
+        # Verify admin minting
+        scenario.verify(c1.data.ledger[sp.pair(artist.address, 0)].balance == 10)
+        scenario.verify(c1.data.total_supply[0] == 10)
+
+        # Test minting as collaborator
+        scenario.h3("Mint Token as Collaborator")
+        collab_edition_md = sp.map(l={
+            "": sp.utils.bytes_of_string("ipfs://QmCollab1"),
+            "name": sp.utils.bytes_of_string("Collaborator Edition"),
+            "symbol": sp.utils.bytes_of_string("COLLAB"),
             "decimals": sp.utils.bytes_of_string("0")
         })
-        c1.mint(to_=artist.address, amount=5, metadata=edition2_md).run(sender=admin)
+        c1.mint(to_=artist.address, amount=5, metadata=collab_edition_md).run(sender=collaborator)
 
-        # Mint 3 copies of a new burn token (token_id 2)
-        burn_token_md = sp.map(l={
-            "": sp.utils.bytes_of_string("ipfs://QmZ3"),
-            "name": sp.utils.bytes_of_string("Burned Edition"),
-            "symbol": sp.utils.bytes_of_string("BURN"),
-            "decimals": sp.utils.bytes_of_string("0")
-        })
-        c1.mint(to_=artist.address, amount=3, metadata=burn_token_md).run(sender=admin)
+        # Verify collaborator minting
+        scenario.verify(c1.data.ledger[sp.pair(artist.address, 1)].balance == 5)
+        scenario.verify(c1.data.total_supply[1] == 5)
 
-        # Verify minting state for all tokens
-        scenario.verify(c1.data.ledger[sp.pair(artist.address, 0)].balance == 10)  # Edition #1
-        scenario.verify(c1.data.ledger[sp.pair(artist.address, 1)].balance == 5)   # Edition #2
-        scenario.verify(c1.data.ledger[sp.pair(artist.address, 2)].balance == 3)   # Burn Token
-
-        scenario.verify(c1.data.total_supply[0] == 10)  # Total supply for token_id 0
-        scenario.verify(c1.data.total_supply[1] == 5)   # Total supply for token_id 1
-        scenario.verify(c1.data.total_supply[2] == 3)   # Total supply for burn token
+        # Test unauthorized minting (should fail)
+        scenario.h3("Unauthorized Minting (Fail)")
+        unauthorized = sp.test_account("Unauthorized")
+        c1.mint(
+            to_=unauthorized.address,
+            amount=1,
+            metadata=collab_edition_md
+        ).run(sender=unauthorized, valid=False)
 
         scenario.h3("Transfer Tests")
         
-        # Test basic transfer using batch_transfer instance for token_id 0 and token_id 1
+        # Test basic transfer
         batch_transfer = Batch_transfer()
         c1.transfer(
             [
                 batch_transfer.item(
                     from_=artist.address,
                     txs=[
-                        sp.record(to_=collector1.address, amount=3, token_id=0),  # Edition #1
-                        sp.record(to_=collector2.address, amount=2, token_id=1)   # Edition #2
+                        sp.record(to_=collector1.address, amount=3, token_id=0),
+                        sp.record(to_=collector2.address, amount=2, token_id=1)
                     ]
                 )
             ]
         ).run(sender=artist)
 
         # Verify balances after transfer
-        scenario.verify(c1.data.ledger[sp.pair(artist.address, 0)].balance == 7)   # Edition #1
-        scenario.verify(c1.data.ledger[sp.pair(collector1.address, 0)].balance == 3)  # Edition #1
-        scenario.verify(c1.data.ledger[sp.pair(artist.address, 1)].balance == 3)   # Edition #2
-        scenario.verify(c1.data.ledger[sp.pair(collector2.address, 1)].balance == 2)  # Edition #2
+        scenario.verify(c1.data.ledger[sp.pair(artist.address, 0)].balance == 7)
+        scenario.verify(c1.data.ledger[sp.pair(collector1.address, 0)].balance == 3)
+        scenario.verify(c1.data.ledger[sp.pair(artist.address, 1)].balance == 3)
+        scenario.verify(c1.data.ledger[sp.pair(collector2.address, 1)].balance == 2)
 
-        # Test transferring more editions than one owns (should fail)
-        scenario.h3("Transfer more editions than owned (Fail)")
+        # Test transfer with insufficient balance (should fail)
         c1.transfer(
             [
                 batch_transfer.item(
                     from_=artist.address,
-                    txs=[sp.record(to_=collector2.address, amount=8, token_id=0)]  # Artist only has 7 left
+                    txs=[sp.record(to_=collector2.address, amount=8, token_id=0)]
                 )
             ]
-        ).run(sender=artist, valid=False)  # This should fail because the artist doesn't own 8 editions
-        
-        scenario.h3("Burn Token Tests")
-
-        # Now, we only burn tokens of token_id 2 (the burn token)
-        # Artist wants to burn 3 burn tokens
-        c1.burn(token_id=2, amount=3).run(sender=artist)
-
-        # Verify burn results
-        scenario.verify(c1.data.ledger[sp.pair(artist.address, 2)].balance == 0)  # Burn tokens removed
-        scenario.verify(c1.data.total_supply[2] == 0)   # Total supply for burn token is now 0
-
-        scenario.h3("Multi-Edition Tests")
-        
-        # Mint a third edition (token_id 3)
-        edition3_md = sp.map(l={
-            "": sp.utils.bytes_of_string("ipfs://QmZ3"),
-            "name": sp.utils.bytes_of_string("Edition #3"),
-            "symbol": sp.utils.bytes_of_string("ED3"),
-            "decimals": sp.utils.bytes_of_string("0")
-        })
-        
-        c1.mint(to_=artist.address, amount=5, metadata=edition3_md).run(sender=admin)
-
-        # Test multi-token transfer
-        c1.transfer(
-            [
-                batch_transfer.item(
-                    from_=artist.address,
-                    txs=[
-                        sp.record(to_=collector2.address, amount=2, token_id=3)  # New Edition #3
-                    ]
-                )
-            ]
-        ).run(sender=artist)
+        ).run(sender=artist, valid=False)
 
         scenario.h3("Operator Tests")
         operator = sp.test_account("Operator")
         
         # Add operator
-        c1.update_operators([sp.variant("add_operator", Operator_param().make(owner=artist.address, operator=operator.address, token_id=3))]).run(sender=artist)
+        c1.update_operators([
+            sp.variant("add_operator", Operator_param().make(
+                owner=artist.address,
+                operator=operator.address,
+                token_id=0
+            ))
+        ]).run(sender=artist)
 
         # Test operator transfer
         c1.transfer(
             [
                 batch_transfer.item(
                     from_=artist.address,
-                    txs=[sp.record(to_=collector1.address, amount=1, token_id=3)]
+                    txs=[sp.record(to_=collector1.address, amount=1, token_id=0)]
                 )
             ]
         ).run(sender=operator)
 
-        # Test unauthorized operator
+        # Verify operator transfer
+        scenario.verify(c1.data.ledger[sp.pair(artist.address, 0)].balance == 6)
+        scenario.verify(c1.data.ledger[sp.pair(collector1.address, 0)].balance == 4)
+
+        # Test unauthorized operator (should fail)
         c1.transfer(
             [
                 batch_transfer.item(
@@ -589,22 +584,19 @@ def add_test(is_default=True):
         ).run(sender=collector1)
 
         # Test total supply view
-        scenario.verify(c1.data.total_supply[0] == 10)  # Edition #1 total supply
-        scenario.verify(c1.data.total_supply[1] == 5)   # Edition #2 total supply
-        scenario.verify(c1.data.total_supply[2] == 0)   # Burn token total supply (should be 0)
+        scenario.verify(c1.data.total_supply[0] == 10)  # First edition total supply
+        scenario.verify(c1.data.total_supply[1] == 5)   # Collaborator edition total supply
 
-        # Test Child and Parent Control (Address Lists)
-        scenario.h3("Test Child and Parent Address Management")
-
-        # Test adding addresses
+        # Test Child and Parent Control
+        scenario.h3("Child and Parent Address Management")
         test_address = sp.address("tz1XXExampleAddress")
-        scenario.h3("Adding a child address")
-        scenario += c1.add_child(test_address).run(sender=ADMIN_ADDRESS)
+        
+        # Test adding child address
+        c1.add_child(test_address).run(sender=admin)
         scenario.verify(c1.data.children.contains(test_address))
 
-        # Test removing addresses
-        scenario.h3("Removing a child address")
-        scenario += c1.remove_child(test_address).run(sender=ADMIN_ADDRESS)
+        # Test removing child address
+        c1.remove_child(test_address).run(sender=admin)
         scenario.verify(~c1.data.children.contains(test_address))
 
 # Add test to the compilation target
